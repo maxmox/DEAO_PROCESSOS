@@ -189,6 +189,11 @@
           "O worker ainda não tem a rota /claude. Atualize o worker (ver README) ou use o modo demonstração."
         );
       }
+      if (/credit balance/i.test(textoErro(dados))) {
+        throw new Error(
+          "A conta da Anthropic está sem créditos. Adicione créditos em console.anthropic.com → Plans & Billing, ou use o modo demonstração."
+        );
+      }
       ultimoErro = new Error(`Claude (${status}): ${textoErro(dados)}`);
       if (status !== 400) break; // só vale a pena simplificar a requisição em erro 400
     }

@@ -183,7 +183,10 @@
     const jevOk = j.status === 422 || j.status === 200;
     let claude = "erro";
     if (c.up === "anthropic" || (c.d && c.d.type === "error" && c.d.error)) {
-      claude = c.status === 401 || (c.d.error && c.d.error.type === "authentication_error") ? "chave" : "ok";
+      const erroMsg = (c.d.error && c.d.error.message) || "";
+      if (c.status === 401 || (c.d.error && c.d.error.type === "authentication_error")) claude = "chave";
+      else if (/credit balance/i.test(erroMsg)) claude = "creditos";
+      else claude = "ok";
     } else if (c.d && c.d.detail) claude = "rota";
     else if (c.status === 500 && c.d && c.d.erro) claude = "config";
 
@@ -191,7 +194,7 @@
     sj.textContent = "Jev: " + (jevOk ? "conectada" : "indisponível");
     sj.className = "pill " + (jevOk ? "ok" : "erro");
     const sc = $("#st-claude");
-    const rot = { ok: "conectado", rota: "sem rota no worker", chave: "chave inválida", config: "chave não configurada", erro: "indisponível" };
+    const rot = { ok: "conectado", rota: "sem rota no worker", chave: "chave inválida", creditos: "conta sem créditos", config: "chave não configurada", erro: "indisponível" };
     sc.textContent = "Claude: " + rot[claude];
     sc.className = "pill " + (claude === "ok" ? "ok" : "erro");
     estado.claudeOk = claude === "ok";
