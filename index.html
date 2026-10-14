@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DEAO Processos</title>
+  <meta name="description" content="Gerador de processos de aquisição (DFD, Termo de Justificativa, ETP, ofício e planilhas) da COMARA com IA, com contagem de tokens e custo.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23173a5e'/%3E%3Cpath d='M9 7h10l5 5v13H9z' fill='%23fff'/%3E%3Cpath d='M12 16h8M12 20h8' stroke='%23173a5e' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <div class="logo">DP</div>
+      <div>
+        <h1>DEAO Processos</h1>
+        <p>Gerador de processos de aquisição · COMARA</p>
+      </div>
+    </div>
+    <div class="status">
+      <span id="st-jev" class="pill">Jev: …</span>
+      <span id="st-claude" class="pill">Claude: …</span>
+      <span class="pill custo" title="Custo do processo atual">Processo: <b id="custo-topo">US$ 0,0000</b></span>
+    </div>
+  </header>
+
+  <nav class="abas" role="tablist">
+    <button class="aba ativa" data-aba="novo">Novo processo</button>
+    <button class="aba" data-aba="custos">Custos e histórico</button>
+    <button class="aba" data-aba="config">Configurações</button>
+    <button class="aba" data-aba="ajuda">Como funciona</button>
+  </nav>
+
+  <main>
+    <!-- ================= NOVO PROCESSO ================= -->
+    <section id="aba-novo" class="painel ativo">
+      <div class="grade">
+        <div class="coluna-principal">
+
+          <div class="card" id="passo1">
+            <div class="card-cab"><span class="num">1</span><h2>Descreva o que precisa ser adquirido</h2></div>
+            <p class="dica">Escreva como num e-mail: quem é você, o setor, o que comprar, quantidades, para quando e onde entregar.</p>
+            <textarea id="pedido" rows="6" placeholder="Ex.: Sou o 1º Ten Fulano, da Seção de Apoio às Obras. Preciso adquirir ... para ... em 2027, com entrega na Sede da COMARA em Belém."></textarea>
+            <div class="acoes">
+              <button class="btn sec" id="btn-exemplo">Usar exemplo (tintas)</button>
+              <label class="chk"><input type="checkbox" id="chk-demo"> Modo demonstração (sem custo de Claude)</label>
+              <span class="espaco"></span>
+              <button class="btn" id="btn-analisar">Analisar pedido</button>
+            </div>
+            <div id="msg1" class="msg"></div>
+          </div>
+
+          <div class="card oculto" id="passo2">
+            <div class="card-cab"><span class="num">2</span><h2>Confira os dados e a classificação</h2></div>
+            <p class="dica">A IA extraiu os dados e a Jev sugeriu a classificação. Ajuste o que for preciso antes de redigir.</p>
+
+            <h3>Classificação</h3>
+            <div class="campos c4">
+              <label>Natureza<select id="f-natureza">
+                <option value="consumo">Material de consumo</option>
+                <option value="permanente">Material permanente</option>
+                <option value="servico">Serviço</option>
+              </select><small id="conf-natureza"></small></label>
+              <label>Procedimento<select id="f-modalidade">
+                <option value="pregao_srp">Pregão – Registro de Preços</option>
+                <option value="pregao">Pregão</option>
+                <option value="dispensa">Dispensa (art. 75, II)</option>
+                <option value="inexigibilidade">Inexigibilidade</option>
+              </select><small id="conf-modalidade"></small></label>
+              <label>Prioridade<select id="f-prioridade">
+                <option>Baixa</option><option>Média</option><option>Alta</option>
+              </select></label>
+              <label>Indicação de marca<select id="f-marca">
+                <option value="nao">Não</option><option value="sim">Sim (art. 41)</option>
+              </select></label>
+            </div>
+            <div id="aviso-modalidade" class="msg"></div>
+
+            <h3>Objeto</h3>
+            <div class="campos c2">
+              <label>Nome curto do objeto<input id="f-objeto"></label>
+              <label>Exercício<input id="f-exercicio"></label>
+              <label class="full">Finalidade<input id="f-finalidade"></label>
+              <label class="full">Local de entrega<input id="f-local"></label>
+              <label class="full">Prazo / urgência<input id="f-urgencia"></label>
+            </div>
+
+            <h3>Itens <small class="leve">valores unitários são estimativas da IA — confirme na pesquisa de preços</small></h3>
+            <div class="tabela-wrap">
+              <table class="itens">
+                <thead><tr><th>#</th><th>Item / especificação</th><th>Unidade</th><th>Qtde.</th><th>R$ unit. (est.)</th><th>Total</th><th></th></tr></thead>
+                <tbody id="tb-itens"></tbody>
+                <tfoot><tr><td colspan="5" class="dir">Total estimado</td><td id="total-itens" class="dir">R$ 0,00</td><td></td></tr></tfoot>
+              </table>
+            </div>
+            <button class="btn sec peq" id="btn-add-item">+ Adicionar item</button>
+
+            <details class="perfil" id="det-perfil">
+              <summary>Requisitante e responsáveis <span id="perfil-resumo" class="leve"></span></summary>
+              <div class="campos c3">
+                <label>Nome completo<input data-perfil="nome"></label>
+                <label>Posto<input data-perfil="posto" placeholder="1º Ten"></label>
+                <label>Nome de guerra<input data-perfil="nomeGuerra"></label>
+                <label>Seção<input data-perfil="setor" placeholder="Seção de Apoio às Obras"></label>
+                <label>Sigla<input data-perfil="sigla" placeholder="DEAO"></label>
+                <label>Cargo<input data-perfil="cargo" placeholder="Chefe da Seção de Apoio às Obras"></label>
+                <label>SARAM<input data-perfil="saram"></label>
+                <label>E-mail<input data-perfil="email"></label>
+                <label>Telefone<input data-perfil="telefone"></label>
+                <label class="full">Área requisitante (DFD/ETP)<input data-perfil="area" placeholder="Divisão de Engenharia - DE"></label>
+              </div>
+              <h4>Responsável pela demanda (chefe)</h4>
+              <div class="campos c3">
+                <label>Nome completo<input data-chefe="nome"></label>
+                <label>Posto<input data-chefe="posto"></label>
+                <label>Cargo<input data-chefe="cargo"></label>
+                <label>SARAM<input data-chefe="saram"></label>
+                <label>E-mail<input data-chefe="email"></label>
+                <label>Telefone<input data-chefe="telefone"></label>
+              </div>
+              <p class="dica">Esses dados ficam salvos só neste navegador e não são enviados à IA.</p>
+            </details>
+
+            <div class="acoes">
+              <span class="espaco"></span>
+              <button class="btn" id="btn-redigir">Redigir documentos</button>
+            </div>
+            <div id="msg2" class="msg"></div>
+          </div>
+
+          <div class="card oculto" id="passo3">
+            <div class="card-cab"><span class="num">3</span><h2>Revise e baixe</h2></div>
+            <div id="progresso" class="progresso"></div>
+            <div id="downloads" class="downloads"></div>
+            <p class="dica">Os textos abaixo podem ser editados antes de baixar. Trechos entre <span class="marca-amarela">[colchetes]</span> são dados que a IA não tinha e saem destacados em amarelo no Word.</p>
+            <div id="editor"></div>
+          </div>
+        </div>
+
+        <aside class="coluna-lateral">
+          <div class="card custo-card">
+            <h2>Uso de IA neste processo</h2>
+            <div class="kpis">
+              <div><span>Custo</span><b id="k-usd">US$ 0,0000</b><small id="k-brl">R$ 0,00</small></div>
+              <div><span>Chamadas</span><b id="k-n">0</b><small id="k-tok">0 tokens</small></div>
+            </div>
+            <div class="tabela-wrap">
+              <table class="uso">
+                <thead><tr><th>Etapa</th><th>Entrada</th><th>Cache</th><th>Saída</th><th>US$</th></tr></thead>
+                <tbody id="tb-uso"><tr><td colspan="5" class="leve">Nenhuma chamada ainda.</td></tr></tbody>
+              </table>
+            </div>
+            <p class="dica peq">Entrada = tokens enviados; Cache = lidos/gravados no cache do prompt (mais baratos); Saída inclui o raciocínio interno do modelo.</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ================= CUSTOS ================= -->
+    <section id="aba-custos" class="painel">
+      <div class="card">
+        <h2>Custos acumulados</h2>
+        <div class="kpis kpis-4">
+          <div><span>Processos gerados</span><b id="h-n">0</b></div>
+          <div><span>Custo total</span><b id="h-usd">US$ 0,00</b><small id="h-brl">R$ 0,00</small></div>
+          <div><span>Custo médio por processo</span><b id="h-media">US$ 0,00</b><small id="h-media-brl">R$ 0,00</small></div>
+          <div><span>Tokens totais</span><b id="h-tok">0</b></div>
+        </div>
+        <div class="tabela-wrap">
+          <table class="uso">
+            <thead><tr><th>Data</th><th>Objeto</th><th>Modelo</th><th>Chamadas</th><th>Tokens</th><th>US$</th><th>R$</th></tr></thead>
+            <tbody id="tb-hist"></tbody>
+          </table>
+        </div>
+        <div class="acoes"><span class="espaco"></span><button class="btn sec peq" id="btn-limpar-hist">Limpar histórico</button></div>
+        <p class="dica">O histórico fica salvo neste navegador. Processos em modo demonstração não entram aqui.</p>
+      </div>
+      <div class="card">
+        <h2>Tabela de preços usada</h2>
+        <div class="tabela-wrap"><table class="uso"><thead><tr><th>Modelo</th><th>Entrada</th><th>Saída</th><th>Escrita em cache</th><th>Leitura em cache</th></tr></thead><tbody id="tb-precos"></tbody></table></div>
+        <p class="dica">Valores em US$ por milhão de tokens. Edite em <code>js/config.js</code> se a tabela mudar.</p>
+      </div>
+    </section>
+
+    <!-- ================= CONFIGURAÇÕES ================= -->
+    <section id="aba-config" class="painel">
+      <div class="card">
+        <h2>Configurações</h2>
+        <div class="campos c2">
+          <label>Modelo de redação (Claude)<select id="cfg-modelo"></select></label>
+          <label>Esforço de raciocínio<select id="cfg-esforco">
+            <option value="low">Baixo (mais barato)</option>
+            <option value="medium">Médio</option>
+            <option value="high">Alto (mais caro)</option>
+          </select></label>
+          <label>Cotação do dólar (R$)<input id="cfg-dolar" type="number" step="0.01" min="0"></label>
+          <label>Token do app (opcional)<input id="cfg-token" type="password" placeholder="só se o worker exigir APP_TOKEN"></label>
+        </div>
+        <p class="dica">Worker: <code id="cfg-worker"></code></p>
+        <div class="acoes"><button class="btn sec peq" id="btn-testar">Testar conexão</button><span id="msg-teste" class="msg inline"></span></div>
+      </div>
+    </section>
+
+    <!-- ================= AJUDA ================= -->
+    <section id="aba-ajuda" class="painel">
+      <div class="card texto">
+        <h2>Como funciona</h2>
+        <ol>
+          <li><b>Extração (Claude, 1 chamada):</b> o texto livre vira dados estruturados — requisitante, itens com especificação técnica, quantidades, local, exercício.</li>
+          <li><b>Classificação (Jev, 1 chamada):</b> a TypeSafe Jev decide natureza (consumo/permanente/serviço), procedimento (pregão SRP, pregão, dispensa, inexigibilidade), prioridade e se há indicação de marca. Custa frações de centavo.</li>
+          <li><b>Redação fracionada (Claude, 4 chamadas):</b> DFD, Termo de Justificativa, ETP parte 1 (necessidade e requisitos) e ETP parte 2 (mercado, solução, quantidades, viabilidade). Cada chamada devolve só os campos variáveis; o texto fixo dos modelos da COMARA está no próprio site, o que reduz tokens.</li>
+          <li><b>Montagem (sem IA):</b> o navegador monta os arquivos Word e Excel no padrão dos modelos e você baixa tudo em .zip.</li>
+        </ol>
+        <p>O prompt de sistema comum a todas as chamadas fica em <b>cache</b>: depois da primeira chamada, ele é cobrado a uma fração do preço normal.</p>
+        <h3>Documentos gerados (Pregão de material)</h3>
+        <ul>
+          <li>Ofício de solicitação de PAM/S ao Chefe da DA</li>
+          <li>Documento de Formalização da Demanda (DFD)</li>
+          <li>Termo de Justificativa para Aquisição (consumo ou permanente)</li>
+          <li>Estudo Técnico Preliminar (ETP)</li>
+          <li>Planilha: justificativa dos quantitativos + mapa de pesquisa de preços (IN 65/2021)</li>
+        </ul>
+        <h3>O que continua com você</h3>
+        <ul>
+          <li>Pesquisa de preços real (Painel de Preços, cotações) — a IA só dá uma referência inicial.</li>
+          <li>Números de processo, ofício, DFD, códigos PGC/PAAC e CATMAT (saem em amarelo).</li>
+          <li>Revisão técnica e jurídica do texto antes de assinar.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">Protótipo DEAO · os documentos gerados devem ser revisados antes do uso oficial.</footer>
+
+  <script src="lib/docx.iife.js"></script>
+  <script src="lib/jszip.min.js"></script>
+  <script src="lib/exceljs.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/pipeline.js"></script>
+  <script src="js/docs.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
